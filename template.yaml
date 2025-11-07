@@ -133,91 +133,49 @@ spec:
         args:
           - -c
           - |
-            set -e
+            set -euo pipefail
             echo "🚀 Applying manifests to Minikube cluster..."
-
+    
             NAMESPACE="${{ parameters.extraFields.Namespace }}"
             DEPLOY="${{ parameters.extraFields.DeploymentFile }}"
             SERVICE="${{ parameters.extraFields.ServiceFile }}"
-
+    
             echo "📁 Using namespace: $NAMESPACE"
             kubectl get ns "$NAMESPACE" >/dev/null 2>&1 || kubectl create ns "$NAMESPACE"
-
+    
             echo "📦 Applying deployment..."
             kubectl apply -f "$DEPLOY" -n "$NAMESPACE"
-
+    
             echo "🔧 Applying service..."
             kubectl apply -f "$SERVICE" -n "$NAMESPACE"
-
+    
             echo "✅ Deployment and Service applied successfully!"
-
-            SVC_NAME=$(kubectl get svc -n "$NAMESPACE" -o jsonpath='{.items[0].metadata.name}')
-            NODE_PORT=$(kubectl get svc "$SVC_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.ports[0].nodePort}')
-            MINIKUBE_IP=$(minikube ip)
-
-            echo "🌍 Access your app at: http://$MINIKUBE_IP:$NODE_PORT"
-
-            # Backstage/Scaffolder compatible output export
-            echo "service_name=$SVC_NAME" >> $GITHUB_OUTPUT
-            echo "external_url=http://$MINIKUBE_IP:$NODE_PORT" >> $GITHUB_OUTPUT
-
-      output:
-        service_name: ${{ steps.apply-kube.output.service_name }}
-        external_url: ${{ steps.apply-kube.output.external_url }}
-
+    
+            echo "🔍 Fetching service details..."
+            SVC_NAME=$(kubectl get -f "$SERVICE" -n "$NAMESPACE" -o jsonpath='{.metadata.name}' 2>/dev/null || kubectl get svc -n "$NAMESPACE" --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}')
+            NODE_PORT=$(kubectl get svc "$SVC_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null || echo "")
+            CLUSTER_IP=$(kubectl get svc "$SVC_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.clusterIP}')
+            CLUSTER_PORT=$(kubectl get svc "$SVC_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.ports[0].port}')
+    
+            EXTERNAL_URL=""
+            if command -v minikube >/dev/null 2>&1; then
+              MINIKUBE_IP=$(minikube ip 2>/dev/null || echo "")
+              if [[ -n "$MINIKUBE_IP" && -n "$NODE_PORT" ]]; then
+                EXTERNAL_URL="http://$MINIKUBE_IP:$NODE_PORT"
+              fi
+            fi
+    
+            if [[ -z "$EXTERNAL_URL" && -n "$CLUSTER_IP" && -n "$CLUSTER_PORT" ]]; then
+              EXTERNAL_URL="http://$CLUSTER_IP:$CLUSTER_PORT"
+            fi
+    
+            echo "🌍 Application accessible at: $EXTERNAL_URL"
+            echo "$EXTERNAL_URL" > url.txt
     - id: show-url
       name: Show Service URL
       if: ${{ parameters.stack == 'Kubernetes' }}
       action: debug:log
       input:
-        message: "Service URL: ${{ steps.apply-kube.output.external_url }}"
-
-  # output:
-  #   links:
-  #     - title: "Open Website"
-  #       if: ${{ parameters.stack == 'Kubernetes' }}
-  #       url: "${{ steps.apply-kube.output.external_url }}"
-  #       icon: "website"
-  # output:
-  #   links:
-  #     - title: "Open Website"
-  #       url: "http://<minikube-ip>:<nodeport>"
-  #       icon: "website"
-
-  # output:
-  #   links:
-  #     - title: "Open Website"
-  #       if: ${{ parameters.stack == 'Kubernetes' }}
-  #       url: "${{ steps.apply-kube.output.externalUrl }}"
-  #       icon: "website"
-  # output:
-  #   serviceName: ${{ steps.apply-kube.output.serviceName }}
-  #   serviceUrl: ${{ steps.apply-kube.output.serviceUrl }}
-
-  #   links:
-  #     - title: "🌍 Open Deployed Website"
-  #       if: ${{ parameters.stack == 'Kubernetes' }}
-  #       url: ${{ output.serviceUrl }}
-  #       icon: "website"
-  
-  #     - title: "🔧 View Kubernetes Service in API Proxy"
-  #       if: ${{ parameters.stack == 'Kubernetes' }}
-  #       url: "http://localhost:8001/api/v1/namespaces/${{ parameters.extraFields.Namespace }}/services/${{ output.serviceName }}/proxy/"
-  #       icon: "kubernetes"
-      
-   # output:
-   #   links:
-  #     # - title: "View on GitHub Pages"
-  #     #   #if: "${{ parameters.deploy_method == 'github pages' }}"
-  #     #   # if: "${{ parameters.stack == 'Github pages' }}"
-  #     #   url: "https://${{ parameters.Github_URL | replace('https://github.com/', '') | replace('.git', '') | replace('/', '.github.io/') }}/"
-  #     #   #url: ${{ steps.github-pages.output.pageUrl }}
-  #     #   icon: "website"
-
-        
-  #     - title: "Open Kubernetes Service"
-  #       if: ${{ parameters.stack == 'Kubernetes' }}
-  #       url: "Output will show Minikube service URL above"
-  #       icon: "server"
-
-        
+        message: |
+          ✅ Your service has been deployed!
+          🌍 Access it here: $(cat ./kube/url.txt || echo "URL not found")
