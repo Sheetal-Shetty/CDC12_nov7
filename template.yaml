@@ -164,6 +164,13 @@ spec:
             NODE_PORT=$(kubectl get svc "$SVC_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.ports[0].nodePort}')
             MINIKUBE_IP=$(minikube ip)
             echo "::set-output name=externalUrl::http://$MINIKUBE_IP:$NODE_PORT"
+
+            echo "service_name=$SVC_NAME" >> $GITHUB_OUTPUT
+            echo "external_url=http://$MINIKUBE_IP:$NODE_PORT" >> $GITHUB_OUTPUT
+        
+      output:
+        service_name: ${{ steps.apply-kube.output.service_name }}
+        external_url: ${{ steps.apply-kube.output.external_url }}
     # - id: fetch-kube
     #   name: Fetch Kubernetes Manifests
     #   if: ${{ parameters.stack == 'Kubernetes' }}
