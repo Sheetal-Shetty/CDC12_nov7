@@ -462,3 +462,9 @@ spec:
         url: "https://${{ parameters.Github_URL | replace('https://github.com/', '') | replace('.git', '') | replace('/', '.github.io/') }}/"
         #url: ${{ steps.github-pages.output.pageUrl }}
         icon: "website"
+
+        
+      - title: "Open Kubernetes Service"
+        if: ${{ parameters.stack == 'Kubernetes' }}
+        url: "Output will show Minikube service URL above"
+        icon: "server"
