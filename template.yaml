@@ -165,12 +165,19 @@ spec:
         service_name: ${{ steps.apply-kube.output.service_name }}
         external_url: ${{ steps.apply-kube.output.external_url }}
 
-  output:
-    links:
-      - title: "Open Website"
-        if: ${{ parameters.stack == 'Kubernetes' }}
-        url: "${{ steps.apply-kube.output.external_url }}"
-        icon: "website"
+    - id: show-url
+      name: Show Service URL
+      if: ${{ parameters.stack == 'Kubernetes' }}
+      action: debug:log
+      input:
+        message: "Service URL: ${{ steps.apply-kube.output.external_url }}"
+
+  # output:
+  #   links:
+  #     - title: "Open Website"
+  #       if: ${{ parameters.stack == 'Kubernetes' }}
+  #       url: "${{ steps.apply-kube.output.external_url }}"
+  #       icon: "website"
   # output:
   #   links:
   #     - title: "Open Website"
