@@ -123,7 +123,7 @@ spec:
       input:
         url: ${{ parameters.Github_URL }}
         targetPath: ./kube
-
+        
     - id: apply-kube
       name: Deploy to Kubernetes via Minikube
       if: ${{ parameters.stack == 'Kubernetes' }}
@@ -134,33 +134,112 @@ spec:
         args:
           - -c
           - |
-            set -e
-            echo "🚀 Applying manifests to Minikube cluster..."
+            set -euo pipefail
 
+            echo "🚀 Starting Kubernetes deploy step..."
+
+            # parameters from template
             NAMESPACE="${{ parameters.extraFields.Namespace }}"
             DEPLOY="${{ parameters.extraFields.DeploymentFile }}"
             SERVICE="${{ parameters.extraFields.ServiceFile }}"
 
-            echo "📁 Using namespace: $NAMESPACE"
+            # defaults
+            if [[ -z "$NAMESPACE" ]]; then
+              NAMESPACE="default"
+            fi
+
+            echo "📁 Using working dir: $(pwd)"
+            echo "📦 Deployment file: $DEPLOY"
+            echo "🔧 Service file:    $SERVICE"
+            echo "📂 Namespace:       $NAMESPACE"
+
+            # ensure files exist (fail early with clear message)
+            if [[ ! -f "$DEPLOY" ]]; then
+              echo "ERROR: Deployment file not found at ./kube/$DEPLOY" >&2
+              exit 5
+            fi
+            if [[ ! -f "$SERVICE" ]]; then
+              echo "ERROR: Service file not found at ./kube/$SERVICE" >&2
+              exit 6
+            fi
+
+            # ensure kubectl exists
+            if ! command -v kubectl >/dev/null 2>&1; then
+              echo "ERROR: kubectl not found on runner" >&2
+              exit 7
+            fi
+
+            # Minikube optional check (not mandatory for non-minikube clusters)
+            if ! command -v minikube >/dev/null 2>&1; then
+              echo "WARN: minikube not found; nodePort external URL may not be resolvable from host"
+            fi
+
+            # create namespace if needed
             kubectl get ns "$NAMESPACE" >/dev/null 2>&1 || kubectl create ns "$NAMESPACE"
 
-            echo "📦 Applying deployment..."
+            # apply manifests
+            echo "Applying deployment..."
             kubectl apply -f "$DEPLOY" -n "$NAMESPACE"
 
-            echo "🔧 Applying service..."
+            echo "Applying service..."
             kubectl apply -f "$SERVICE" -n "$NAMESPACE"
 
-            echo "✅ Deployment and Service applied successfully!"
+            echo "Waiting a short while for resources..."
+            sleep 3
 
-            SVC_NAME=$(kubectl get svc -n "$NAMESPACE" -o jsonpath='{.items[0].metadata.name}')
-            NODE_PORT=$(kubectl get svc "$SVC_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.ports[0].nodePort}')
-            MINIKUBE_IP=$(minikube ip)
-            EXTERNAL_URL="http://$MINIKUBE_IP:$NODE_PORT"
+            # determine service name (best-effort: read name from service yaml)
+            SVC_NAME=$(kubectl get -f "$SERVICE" -n "$NAMESPACE" -o jsonpath='{.metadata.name}' 2>/dev/null || true)
+            if [[ -z "$SVC_NAME" ]]; then
+              # fallback: pick the most recently created service in namespace
+              SVC_NAME=$(kubectl get svc -n "$NAMESPACE" --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}')
+            fi
 
-            echo "🌍 Service available at: $EXTERNAL_URL"
+            if [[ -z "$SVC_NAME" ]]; then
+              echo "ERROR: Could not determine service name" >&2
+              exit 8
+            fi
 
-            # ✅ Backstage requires JSON file output (not ::set-output)
-            echo "{\"service_name\": \"$SVC_NAME\", \"external_url\": \"$EXTERNAL_URL\"}" > output.json
+            echo "Detected service name: $SVC_NAME"
+
+            # try to get nodePort first (exposed externally)
+            NODE_PORT=$(kubectl get svc "$SVC_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null || true)
+            CLUSTER_PORT=$(kubectl get svc "$SVC_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.ports[0].port}' 2>/dev/null || true)
+            CLUSTER_IP=$(kubectl get svc "$SVC_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.clusterIP}' 2>/dev/null || true)
+
+            # decide which external URL to provide:
+            if [[ -n "$NODE_PORT" && -n "$(command -v minikube 2>/dev/null)" ]]; then
+              MINIKUBE_IP=$(minikube ip 2>/dev/null || true)
+              if [[ -n "$MINIKUBE_IP" ]]; then
+                EXTERNAL_URL="http://$MINIKUBE_IP:$NODE_PORT"
+              else
+                EXTERNAL_URL=""
+              fi
+            else
+              # fallback to ClusterIP:port (internal cluster URL)
+              if [[ -n "$CLUSTER_IP" && -n "$CLUSTER_PORT" ]]; then
+                EXTERNAL_URL="http://$CLUSTER_IP:$CLUSTER_PORT"
+              else
+                EXTERNAL_URL=""
+              fi
+            fi
+
+            echo "Service details: name=$SVC_NAME, clusterIP=$CLUSTER_IP, port=$CLUSTER_PORT, nodePort=$NODE_PORT"
+            if [[ -n "$EXTERNAL_URL" ]]; then
+              echo "Service reachable at: $EXTERNAL_URL"
+            else
+              echo "No external URL could be determined (service may be ClusterIP-only and not accessible from host)"
+            fi
+
+            # Create output.json that Backstage will read
+            echo "{\"service_name\": \"$SVC_NAME\", \"cluster_ip\": \"$CLUSTER_IP\", \"port\": \"$CLUSTER_PORT\", \"node_port\": \"$NODE_PORT\", \"external_url\": \"$EXTERNAL_URL\"}" > output.json
+
+      output:
+        service_name: ${{ steps.apply-kube.output.service_name }}
+        cluster_ip: ${{ steps.apply-kube.output.cluster_ip }}
+        port: ${{ steps.apply-kube.output.port }}
+        node_port: ${{ steps.apply-kube.output.node_port }}
+        external_url: ${{ steps.apply-kube.output.external_url }}
+
 
       output:
         service_name: ${{ steps.apply-kube.output.service_name }}
