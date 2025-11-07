@@ -114,6 +114,39 @@ spec:
     #     url: ${{ parameters.Github_URL }}
     #     targetPath: .
 
+    - id: fetch-kube
+      name: Fetch Kubernetes Manifests
+      if: ${{ parameters.stack == 'Kubernetes' }}
+      action: fetch:plain
+      input:
+        url: ${{ parameters.Github_URL }}
+        targetPath: ./kube
+
+    - id: apply-kube
+      name: Deploy to Kubernetes via Minikube
+      if: ${{ parameters.stack == 'Kubernetes' }}
+      action: shell:run
+      input:
+        cwd: ./kube
+        command: bash
+        args:
+          - -c
+          - |
+            set -e
+            echo "🚀 Applying manifests to Minikube cluster..."
+
+            NAMESPACE="${{ parameters.extraFields.Namespace }}"
+            DEPLOY="${{ parameters.extraFields.DeploymentFile }}"
+            SERVICE="${{ parameters.extraFields.ServiceFile }}"
+
+            echo "Using namespace: $NAMESPACE"
+            kubectl apply -f "$DEPLOY" -n "$NAMESPACE"
+            kubectl apply -f "$SERVICE" -n "$NAMESPACE"
+
+            echo "✅ Deployed successfully!"
+            echo "🌐 Fetching service URL..."
+            minikube service --url -n "$NAMESPACE" $(kubectl get svc -n "$NAMESPACE" -o jsonpath='{.items[0].metadata.name}') || true
+
     - id: fetch
       name: Fetch GitHub Repo
       action: fetch:plain
