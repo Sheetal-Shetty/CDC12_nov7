@@ -454,18 +454,17 @@ spec:
   #     - title: "Open Website"
   #       #url: "http://localhost:89"
   #       icon: "website"
-
-output:
-    serviceName: ${{ steps.apply-kube.output.stdout | regex_extract('\"serviceName\": \"([^\"]+)\"', 1) }}
-    serviceUrl: ${{ steps.apply-kube.output.stdout | regex_extract('\"serviceUrl\": \"([^\"]+)\"', 1) }}
-
+  output:
     links:
-      - title: "🌍 Open Deployed Website"
-        if: ${{ parameters.stack == 'Kubernetes' }}
-        url: ${{ output.serviceUrl }}
-        icon: "website"
-      - title: "🔧 View Service in Kubernetes Dashboard"
-        if: ${{ parameters.stack == 'Kubernetes' }}
-        url: "http://localhost:8001/api/v1/namespaces/${{ parameters.extraFields.Namespace }}/services/${{ output.serviceName }}/proxy/"
-        icon: "kubernetes"
+      # - title: "View on GitHub Pages"
+      #   #if: "${{ parameters.deploy_method == 'github pages' }}"
+      #   # if: "${{ parameters.stack == 'Github pages' }}"
+      #   url: "https://${{ parameters.Github_URL | replace('https://github.com/', '') | replace('.git', '') | replace('/', '.github.io/') }}/"
+      #   #url: ${{ steps.github-pages.output.pageUrl }}
+      #   icon: "website"
 
+        
+      - title: "Open Kubernetes Service"
+        if: ${{ parameters.stack == 'Kubernetes' }}
+        url: "Output will show Minikube service URL above"
+        icon: "server"
