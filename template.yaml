@@ -204,16 +204,16 @@ spec:
     serviceName: ${{ steps.apply-kube.output.serviceName }}
     serviceUrl: ${{ steps.apply-kube.output.serviceUrl }}
 
-  links:
-    - title: "🌍 Open Deployed Website"
-      if: ${{ parameters.stack == 'Kubernetes' }}
-      url: ${{ output.serviceUrl }}
-      icon: "website"
-
-    - title: "🔧 View Kubernetes Service in API Proxy"
-      if: ${{ parameters.stack == 'Kubernetes' }}
-      url: "http://localhost:8001/api/v1/namespaces/${{ parameters.extraFields.Namespace }}/services/${{ output.serviceName }}/proxy/"
-      icon: "kubernetes"
+    links:
+      - title: "🌍 Open Deployed Website"
+        if: ${{ parameters.stack == 'Kubernetes' }}
+        url: ${{ output.serviceUrl }}
+        icon: "website"
+  
+      - title: "🔧 View Kubernetes Service in API Proxy"
+        if: ${{ parameters.stack == 'Kubernetes' }}
+        url: "http://localhost:8001/api/v1/namespaces/${{ parameters.extraFields.Namespace }}/services/${{ output.serviceName }}/proxy/"
+        icon: "kubernetes"
       
   # output:
   #   links:
