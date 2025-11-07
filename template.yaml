@@ -107,12 +107,6 @@ spec:
                       default: "default"
           
   steps:
-    # - id: fetch-template
-    #   name: Fetch template files
-    #   action: fetch:plain
-    #   input:
-    #     url: ${{ parameters.Github_URL }}
-    #     targetPath: .
 
 
     - id: fetch
@@ -147,324 +141,93 @@ spec:
             DEPLOY="${{ parameters.extraFields.DeploymentFile }}"
             SERVICE="${{ parameters.extraFields.ServiceFile }}"
 
-            echo "Using namespace: $NAMESPACE"
+            echo "📁 Using namespace: $NAMESPACE"
+            kubectl get ns "$NAMESPACE" >/dev/null 2>&1 || kubectl create ns "$NAMESPACE"
+
+            echo "📦 Applying deployment..."
             kubectl apply -f "$DEPLOY" -n "$NAMESPACE"
+
+            echo "🔧 Applying service..."
             kubectl apply -f "$SERVICE" -n "$NAMESPACE"
 
-            echo "✅ Deployed successfully!"
-            echo "🌐 Fetching service URL..."
-            minikube service --url -n "$NAMESPACE" $(kubectl get svc -n "$NAMESPACE" -o jsonpath='{.items[0].metadata.name}') || true
+            echo "✅ Deployment and Service applied successfully!"
 
+            echo "🌐 Fetching service name..."
+            SVC_NAME=$(kubectl get svc -n "$NAMESPACE" -o jsonpath='{.items[0].metadata.name}')
 
-    # - id: fetch
-    #   name: Fetch GitHub Repo
+            echo "🔎 Found service: $SVC_NAME"
+
+            echo "🔗 Fetching service URL from Minikube..."
+            SVC_URL=$(minikube service "$SVC_NAME" -n "$NAMESPACE" --url | head -n 1)
+
+            echo "🌍 Service available at: $SVC_URL"
+
+            echo "::set-output name=serviceName::$SVC_NAME"
+            echo "::set-output name=serviceUrl::$SVC_URL"
+    # - id: fetch-kube
+    #   name: Fetch Kubernetes Manifests
+    #   if: ${{ parameters.stack == 'Kubernetes' }}
     #   action: fetch:plain
     #   input:
     #     url: ${{ parameters.Github_URL }}
-    #     targetPath: ./site
+    #     targetPath: ./kube
 
-    # - id: build
-    #   name: Prepare Static Site
-    #   if: ${{ parameters.stack == 'Github pages' }}
+    # - id: apply-kube
+    #   name: Deploy to Kubernetes via Minikube
+    #   if: ${{ parameters.stack == 'Kubernetes' }}
     #   action: shell:run
     #   input:
+    #     cwd: ./kube
     #     command: bash
     #     args:
     #       - -c
     #       - |
     #         set -e
-    #         echo "🌐 Static site detected"
-    #         echo "📍 Working directory: $(pwd)"
-    #         echo "📂 Files present (excluding hidden):"
-    #         find . -maxdepth 2 -not -path '*/.*'
-    
-    #         echo "📦 Creating ./dist folder"
-    #         mkdir -p ./dist
-    
-    #         # Copy visible files from root if any
-    #         if [ "$(ls -A | grep -v '^\.' | wc -l)" -gt 0 ]; then
-    #           echo "📋 Copying files from root to ./dist..."
-    #           rsync -av --exclude='.*' ./ ./dist/
-    #         fi
-    
-    #         # Copy all non-hidden subfolders into dist
-    #         SUBFOLDERS=$(find . -mindepth 1 -maxdepth 1 -type d -not -name '.*')
-    #         for F in $SUBFOLDERS; do
-    #           echo "📂 Copying contents of $F to ./dist..."
-    #           rsync -av --exclude='.*' "$F"/ ./dist/
-    #         done
-    
-    #         echo "✅ All static files copied to ./dist successfully!"
-    #     cwd: ./site
+    #         echo "🚀 Applying manifests to Minikube cluster..."
+
+    #         NAMESPACE="${{ parameters.extraFields.Namespace }}"
+    #         DEPLOY="${{ parameters.extraFields.DeploymentFile }}"
+    #         SERVICE="${{ parameters.extraFields.ServiceFile }}"
+
+    #         echo "Using namespace: $NAMESPACE"
+    #         kubectl apply -f "$DEPLOY" -n "$NAMESPACE"
+    #         kubectl apply -f "$SERVICE" -n "$NAMESPACE"
+
+    #         echo "✅ Deployed successfully!"
+    #         echo "🌐 Fetching service URL..."
+    #         minikube service --url -n "$NAMESPACE" $(kubectl get svc -n "$NAMESPACE" -o jsonpath='{.items[0].metadata.name}') || true
 
 
 
-    
-    # - id: build
-    #   name: Build Project
-    #   action: shell:run
-    #   input:
-    #     command: bash
-    #     args:
-    #       - -c
-    #       - |
-    #         set -euo pipefail
-    #         echo "📁 Working directory: $(pwd)"
-    #         echo "🔍 Searching for project type..."
-    
-    #         PACKAGE_JSON=$(find . -name package.json -print -quit || true)
-    
-    #         if [ -n "$PACKAGE_JSON" ]; then
-    #           echo "📦 Node.js project detected: $PACKAGE_JSON"
-    #           cd "$(dirname "$PACKAGE_JSON")"
-    #           npm install
-    #           npm run build || { echo "❌ npm build failed"; exit 1; }
-    #           if [ -d build ]; then
-    #             mv build ../dist
-    #           elif [ -d dist ]; then
-    #             mv dist ../dist
-    #           fi
-    #           echo "✅ Node.js build complete"
-    #         elif [ -f "index.html" ]; then
-    #           echo "🌐 Plain static site detected, copying to dist..."
-    #           mkdir -p ./dist
-    #           cp -r ./* ./dist
-    #         else
-    #           echo "⚠️ Unknown project type, skipping build"
-    #         fi
-    #     cwd: ./site
 
-    # - id: publish
-    #   name: Deploy Static Site to GitHub Pages
-    #   if: ${{ parameters.stack == 'Github pages' }}
-    #   action: shell:run
-    #   input:
-    #     command: bash
-    #     args:
-    #       - -c
-    #       - |
-    #         set -e
-    #         cd ./site/dist
-
-    #         # Take the user input GitHub URL
-    #         USER_URL="${{ parameters.Github_URL }}"
-            
-    #         # Remove trailing slash if present
-    #         USER_URL="${USER_URL%/}"
-            
-    #         # Add token for authentication
-    #         AUTH_URL="https://x-access-token:${{ parameters.extraFields.GithubToken }}@${USER_URL#https://}"
-
-    #         git init
-    #         git config user.email "backstage@automation.local"
-    #         git config user.name "Backstage Bot"
-    #         git remote add origin "$AUTH_URL"
-    #         git checkout -b gh-pages || git checkout gh-pages
-    #         git add .
-    #         git commit -m "Deploy from Backstage Template"
-    #         git push --force origin gh-pages
-
-#########this is commented on 10-15-2025 at 11am to skip enable github pages
-    # git remote add origin https://x-access-token:${{ parameters.extraFields.GithubToken }}@github.com/Meghana-shetty/CafeStaticWebsite.git
-    # - id: enable-pages
-    #   name: Enable GitHub Pages
-    #   if: ${{ parameters.stack == 'Github pages' }}
-    #   action: github:pages:enable
-    #   input:
-    #     repoUrl: ${{ parameters.extraFields.Github }}
-    #     buildType: workflow
-    #     sourceBranch: gh-pages
-    #     sourcePath: /
-    #     token: ${{ parameters.extraFields.GithubToken }}
-
-##########commented on 10-15-2025 at 11am
-
-#########below are previous code
-    # - id: build
-    #   name: Build Project
-    #   action: shell:run
-    #   input:
-    #     command: bash
-    #     args:
-    #       - -c
-    #       - |
-    #         # Node.js
-    #         PACKAGE_JSON=$(find . -name package.json -print -quit)
-    #         if [ -n "$PACKAGE_JSON" ]; then
-    #           cd $(dirname "$PACKAGE_JSON")
-    #           npm install
-    #           npm run build
-    #           # Normalize output to ./dist
-    #           if [ -d build ]; then mv build ../dist; elif [ -d dist ]; then mv dist ../dist; fi
-    #         elif [ -f "index.html" ]; then
-    #           # plain static site, just copy to ./dist
-    #           mkdir -p ./dist
-    #           cp -r ./* ./dist
-    #         else
-    #           echo "⚠️ Unknown project type; no build executed"
-    #         fi
-    #     cwd: ./site
-
-   
-
-    # - id: publish
-    #   name: Publish to GitHub Pages
-    #   action: publish:github
-    #   input:
-    #     repoUrl: ${{ parameters.extraFields.Github }}  # GitHub repo URL
-    #     defaultBranch: gh-pages
-    #     sourcePath: ./site/dist  # folder containing final static site
-    #     protectDefaultBranch: false
-
-    # - id: enable-pages
-    #   name: Enable GitHub Pages
-    #   if: ${{ parameters.stack == 'Github pages' }}
-    #   action: github:pages:enable
-    #   input:
-    #     repoUrl: ${{ parameters.extraFields.Github }}
-    #     buildType: workflow
-    #     sourceBranch: gh-pages
-    #     sourcePath: /
-    #     token: ${{ parameters.extraFields.GithubToken }}
-
-
-######till here############################################
-    # - id: github-pages
-    #   name: Enable GitHub Pages
-    #   if: ${{ parameters.stack == 'Github pages' }}
-    #   action: github:pages:enable
-    #   input:
-    #     repoUrl: ${{ parameters.extraFields.Github }} # github.com?repo=Cafe-static-last&owner=Meghana-shetty
-    #     buildType: workflow
-    #     sourceBranch: main
-    #     sourcePath: /
-    #     token: ${{ parameters.extraFields.GithubToken }}
-
-
-    ##########################Adding for Github Pages##########################
-
-    # - id: fetch
-    #   name: Fetch Template
-    #   action: fetch:template
-    #   input:
-    #     url: ./template-content
-    #     targetPath: ./site
-
-    # - id: build
-    #   name: Build Static Site
-    #   action: scaffolder:execute-shell-command #execute:template
-    #   input:
-    #     #command: npm install && npm run build
-    #       shell: bash
-    #       script: |
-    #       # Search for Node.js project
-    #         PACKAGE_JSON_PATH=$(find . -name package.json -print -quit)
-    #         if [ -n "$PACKAGE_JSON_PATH" ]; then
-    #           echo "📦 Node.js project detected at $PACKAGE_JSON_PATH"
-    #           cd $(dirname "$PACKAGE_JSON_PATH")
-    #           npm install
-    #           npm run build
-            
-    #         # Search for Maven project
-    #         elif MAVEN_POM_PATH=$(find . -name pom.xml -print -quit); [ -n "$MAVEN_POM_PATH" ]; then
-    #           echo "☕ Java Maven project detected at $MAVEN_POM_PATH"
-    #           cd $(dirname "$MAVEN_POM_PATH")
-    #           mvn package
-            
-    #         # Search for Gradle project
-    #         elif GRADLE_PATH=$(find . \( -name build.gradle -o -name gradlew \) -print -quit); [ -n "$GRADLE_PATH" ]; then
-    #           echo "☕ Java Gradle project detected at $GRADLE_PATH"
-    #           cd $(dirname "$GRADLE_PATH")
-    #           ./gradlew build
-            
-    #         # Search for Python project
-    #         elif PYTHON_REQ_PATH=$(find . -name requirements.txt -print -quit); [ -n "$PYTHON_REQ_PATH" ]; then
-    #           echo "🐍 Python project detected at $PYTHON_REQ_PATH"
-    #           cd $(dirname "$PYTHON_REQ_PATH")
-    #           pip install -r requirements.txt
-    #           python manage.py collectstatic || echo "No static files to collect"
-            
-    #         # Search for plain static site
-    #         elif HTML_PATH=$(find . -name index.html -print -quit); [ -n "$HTML_PATH" ]; then
-    #           echo "🌐 Plain static site detected at $HTML_PATH (no build needed)"
-            
-    #         else
-    #           echo "⚠️ Unknown project type. No build executed."
-    #         fi
-
-    #       workingDirectory: .
-
-    # - id: publish
-    #   name: Publish to GitHub
-    #   action: publish:github
-    #   input:
-    #     repoUrl: ${{ parameters.extraFields.Github }}
-    #     defaultBranch: gh-pages
-    #     sourcePath: ./dist
-    #     protectDefaultBranch: false
-
-
-  # output:
-  #   links:
-  #     - title: Repository
-  #       url: ${{ steps.publish.output.remoteUrl }}
-  #     - title: Live GitHub Pages Site
-  #       url: ${{ steps.github-pages.output.pageUrl }}
-
-
-    
-################################################################################################################################
-    # - id: build_docker
-    #   name: Build Docker Image
-    #   if: ${{ parameters.stack == 'Docker' }}
-    #   action: shell:run
-    #   input:
-    #     cwd: ${{ steps.clone.output.path }}
-    #     command: docker 
-    #     args: ["build", "-f", "${{ parameters.extraFields.Dockerfile }}", "-t", "my-image:latest", "."]
-
-
-    # - id: cleanup
-    #   name: Remove old container if exists
-    #   if: ${{ parameters.stack == 'Docker' }}
-    #   action: shell:run
-    #   input:
-    #     command: docker
-    #     args: ["rm", "-f", "Cafe-container"]
-                
-
-    # - id: deploy_docker
-    #   name: Deploy Docker Container
-    #   if: ${{ parameters.stack == 'Docker' }}
-    #   action: shell:run
-    #   input:
-    #     cwd: ${{ steps.clone.output.path }}
-    #     command: docker
-    #     args: ["run", "--name", "Cafe-container", "-it", "-d", "-p", "89:${{ parameters.extraFields.Port }}", "my-image:latest"]
-
-    # - id: run-echo
-    #   name: Echo Test
-    #   action: shell:run
-    #   input:
-    #     command: echo
-    #     args: ["Hello Backstage!"]
-
-  # output:
-  #   links:
-  #     - title: "Open Website"
-  #       #url: "http://localhost:89"
-  #       icon: "website"
   output:
-    links:
-      # - title: "View on GitHub Pages"
-      #   #if: "${{ parameters.deploy_method == 'github pages' }}"
-      #   # if: "${{ parameters.stack == 'Github pages' }}"
-      #   url: "https://${{ parameters.Github_URL | replace('https://github.com/', '') | replace('.git', '') | replace('/', '.github.io/') }}/"
-      #   #url: ${{ steps.github-pages.output.pageUrl }}
-      #   icon: "website"
+    serviceName: ${{ steps.apply-kube.output.serviceName }}
+    serviceUrl: ${{ steps.apply-kube.output.serviceUrl }}
+
+  links:
+    - title: "🌍 Open Deployed Website"
+      if: ${{ parameters.stack == 'Kubernetes' }}
+      url: ${{ output.serviceUrl }}
+      icon: "website"
+
+    - title: "🔧 View Kubernetes Service in API Proxy"
+      if: ${{ parameters.stack == 'Kubernetes' }}
+      url: "http://localhost:8001/api/v1/namespaces/${{ parameters.extraFields.Namespace }}/services/${{ output.serviceName }}/proxy/"
+      icon: "kubernetes"
+      
+  # output:
+  #   links:
+  #     # - title: "View on GitHub Pages"
+  #     #   #if: "${{ parameters.deploy_method == 'github pages' }}"
+  #     #   # if: "${{ parameters.stack == 'Github pages' }}"
+  #     #   url: "https://${{ parameters.Github_URL | replace('https://github.com/', '') | replace('.git', '') | replace('/', '.github.io/') }}/"
+  #     #   #url: ${{ steps.github-pages.output.pageUrl }}
+  #     #   icon: "website"
 
         
-      - title: "Open Kubernetes Service"
-        if: ${{ parameters.stack == 'Kubernetes' }}
-        url: "Output will show Minikube service URL above"
-        icon: "server"
+  #     - title: "Open Kubernetes Service"
+  #       if: ${{ parameters.stack == 'Kubernetes' }}
+  #       url: "Output will show Minikube service URL above"
+  #       icon: "server"
+
+        
