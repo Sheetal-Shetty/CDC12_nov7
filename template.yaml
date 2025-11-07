@@ -151,19 +151,19 @@ spec:
             kubectl apply -f "$SERVICE" -n "$NAMESPACE"
 
             echo "✅ Deployment and Service applied successfully!"
-
-            echo "🌐 Fetching service name..."
             SVC_NAME=$(kubectl get svc -n "$NAMESPACE" -o jsonpath='{.items[0].metadata.name}')
-
-            echo "🔎 Found service: $SVC_NAME"
-
-            echo "🔗 Fetching service URL from Minikube..."
-            SVC_URL=$(minikube service "$SVC_NAME" -n "$NAMESPACE" --url | head -n 1)
+            CLUSTER_IP=$(kubectl get svc "$SVC_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.clusterIP}')
+            PORT=$(kubectl get svc "$SVC_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.ports[0].port}')
 
             echo "🌍 Service available at: $SVC_URL"
 
+
             echo "::set-output name=serviceName::$SVC_NAME"
-            echo "::set-output name=serviceUrl::$SVC_URL"
+            echo "::set-output name=clusterIp::$CLUSTER_IP"
+            echo "::set-output name=servicePort::$PORT"
+            NODE_PORT=$(kubectl get svc "$SVC_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.ports[0].nodePort}')
+            MINIKUBE_IP=$(minikube ip)
+            echo "::set-output name=externalUrl::http://$MINIKUBE_IP:$NODE_PORT"
     # - id: fetch-kube
     #   name: Fetch Kubernetes Manifests
     #   if: ${{ parameters.stack == 'Kubernetes' }}
@@ -197,26 +197,29 @@ spec:
     #         echo "🌐 Fetching service URL..."
     #         minikube service --url -n "$NAMESPACE" $(kubectl get svc -n "$NAMESPACE" -o jsonpath='{.items[0].metadata.name}') || true
 
-
-
-
   output:
-    serviceName: ${{ steps.apply-kube.output.serviceName }}
-    serviceUrl: ${{ steps.apply-kube.output.serviceUrl }}
-
     links:
-      - title: "🌍 Open Deployed Website"
+      - title: "Open Website"
         if: ${{ parameters.stack == 'Kubernetes' }}
-        url: ${{ output.serviceUrl }}
+        url: "${{ steps.apply-kube.output.externalUrl }}"
         icon: "website"
-  
-      - title: "🔧 View Kubernetes Service in API Proxy"
-        if: ${{ parameters.stack == 'Kubernetes' }}
-        url: "http://localhost:8001/api/v1/namespaces/${{ parameters.extraFields.Namespace }}/services/${{ output.serviceName }}/proxy/"
-        icon: "kubernetes"
-      
   # output:
+  #   serviceName: ${{ steps.apply-kube.output.serviceName }}
+  #   serviceUrl: ${{ steps.apply-kube.output.serviceUrl }}
+
   #   links:
+  #     - title: "🌍 Open Deployed Website"
+  #       if: ${{ parameters.stack == 'Kubernetes' }}
+  #       url: ${{ output.serviceUrl }}
+  #       icon: "website"
+  
+  #     - title: "🔧 View Kubernetes Service in API Proxy"
+  #       if: ${{ parameters.stack == 'Kubernetes' }}
+  #       url: "http://localhost:8001/api/v1/namespaces/${{ parameters.extraFields.Namespace }}/services/${{ output.serviceName }}/proxy/"
+  #       icon: "kubernetes"
+      
+   # output:
+   #   links:
   #     # - title: "View on GitHub Pages"
   #     #   #if: "${{ parameters.deploy_method == 'github pages' }}"
   #     #   # if: "${{ parameters.stack == 'Github pages' }}"
