@@ -114,6 +114,14 @@ spec:
     #     url: ${{ parameters.Github_URL }}
     #     targetPath: .
 
+
+    - id: fetch
+      name: Fetch GitHub Repo
+      action: fetch:plain
+      input:
+        url: ${{ parameters.Github_URL }}
+        targetPath: ./site  # fetch code into ./site folder
+
     - id: fetch-kube
       name: Fetch Kubernetes Manifests
       if: ${{ parameters.stack == 'Kubernetes' }}
@@ -147,12 +155,6 @@ spec:
             echo "🌐 Fetching service URL..."
             minikube service --url -n "$NAMESPACE" $(kubectl get svc -n "$NAMESPACE" -o jsonpath='{.items[0].metadata.name}') || true
 
-    - id: fetch
-      name: Fetch GitHub Repo
-      action: fetch:plain
-      input:
-        url: ${{ parameters.Github_URL }}
-        targetPath: ./site  # fetch code into ./site folder
 
     # - id: fetch
     #   name: Fetch GitHub Repo
@@ -161,39 +163,39 @@ spec:
     #     url: ${{ parameters.Github_URL }}
     #     targetPath: ./site
 
-    - id: build
-      name: Prepare Static Site
-      if: ${{ parameters.stack == 'Github pages' }}
-      action: shell:run
-      input:
-        command: bash
-        args:
-          - -c
-          - |
-            set -e
-            echo "🌐 Static site detected"
-            echo "📍 Working directory: $(pwd)"
-            echo "📂 Files present (excluding hidden):"
-            find . -maxdepth 2 -not -path '*/.*'
+    # - id: build
+    #   name: Prepare Static Site
+    #   if: ${{ parameters.stack == 'Github pages' }}
+    #   action: shell:run
+    #   input:
+    #     command: bash
+    #     args:
+    #       - -c
+    #       - |
+    #         set -e
+    #         echo "🌐 Static site detected"
+    #         echo "📍 Working directory: $(pwd)"
+    #         echo "📂 Files present (excluding hidden):"
+    #         find . -maxdepth 2 -not -path '*/.*'
     
-            echo "📦 Creating ./dist folder"
-            mkdir -p ./dist
+    #         echo "📦 Creating ./dist folder"
+    #         mkdir -p ./dist
     
-            # Copy visible files from root if any
-            if [ "$(ls -A | grep -v '^\.' | wc -l)" -gt 0 ]; then
-              echo "📋 Copying files from root to ./dist..."
-              rsync -av --exclude='.*' ./ ./dist/
-            fi
+    #         # Copy visible files from root if any
+    #         if [ "$(ls -A | grep -v '^\.' | wc -l)" -gt 0 ]; then
+    #           echo "📋 Copying files from root to ./dist..."
+    #           rsync -av --exclude='.*' ./ ./dist/
+    #         fi
     
-            # Copy all non-hidden subfolders into dist
-            SUBFOLDERS=$(find . -mindepth 1 -maxdepth 1 -type d -not -name '.*')
-            for F in $SUBFOLDERS; do
-              echo "📂 Copying contents of $F to ./dist..."
-              rsync -av --exclude='.*' "$F"/ ./dist/
-            done
+    #         # Copy all non-hidden subfolders into dist
+    #         SUBFOLDERS=$(find . -mindepth 1 -maxdepth 1 -type d -not -name '.*')
+    #         for F in $SUBFOLDERS; do
+    #           echo "📂 Copying contents of $F to ./dist..."
+    #           rsync -av --exclude='.*' "$F"/ ./dist/
+    #         done
     
-            echo "✅ All static files copied to ./dist successfully!"
-        cwd: ./site
+    #         echo "✅ All static files copied to ./dist successfully!"
+    #     cwd: ./site
 
 
 
@@ -232,35 +234,35 @@ spec:
     #         fi
     #     cwd: ./site
 
-    - id: publish
-      name: Deploy Static Site to GitHub Pages
-      if: ${{ parameters.stack == 'Github pages' }}
-      action: shell:run
-      input:
-        command: bash
-        args:
-          - -c
-          - |
-            set -e
-            cd ./site/dist
+    # - id: publish
+    #   name: Deploy Static Site to GitHub Pages
+    #   if: ${{ parameters.stack == 'Github pages' }}
+    #   action: shell:run
+    #   input:
+    #     command: bash
+    #     args:
+    #       - -c
+    #       - |
+    #         set -e
+    #         cd ./site/dist
 
-            # Take the user input GitHub URL
-            USER_URL="${{ parameters.Github_URL }}"
+    #         # Take the user input GitHub URL
+    #         USER_URL="${{ parameters.Github_URL }}"
             
-            # Remove trailing slash if present
-            USER_URL="${USER_URL%/}"
+    #         # Remove trailing slash if present
+    #         USER_URL="${USER_URL%/}"
             
-            # Add token for authentication
-            AUTH_URL="https://x-access-token:${{ parameters.extraFields.GithubToken }}@${USER_URL#https://}"
+    #         # Add token for authentication
+    #         AUTH_URL="https://x-access-token:${{ parameters.extraFields.GithubToken }}@${USER_URL#https://}"
 
-            git init
-            git config user.email "backstage@automation.local"
-            git config user.name "Backstage Bot"
-            git remote add origin "$AUTH_URL"
-            git checkout -b gh-pages || git checkout gh-pages
-            git add .
-            git commit -m "Deploy from Backstage Template"
-            git push --force origin gh-pages
+    #         git init
+    #         git config user.email "backstage@automation.local"
+    #         git config user.name "Backstage Bot"
+    #         git remote add origin "$AUTH_URL"
+    #         git checkout -b gh-pages || git checkout gh-pages
+    #         git add .
+    #         git commit -m "Deploy from Backstage Template"
+    #         git push --force origin gh-pages
 
 #########this is commented on 10-15-2025 at 11am to skip enable github pages
     # git remote add origin https://x-access-token:${{ parameters.extraFields.GithubToken }}@github.com/Meghana-shetty/CafeStaticWebsite.git
